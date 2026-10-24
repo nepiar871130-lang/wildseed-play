@@ -1,0 +1,43 @@
+name: Publish game
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble verified game pack
+        shell: python
+        run: |
+          import hashlib, json
+          from pathlib import Path
+          for entry in json.loads(Path('parts.json').read_text()):
+              digest = hashlib.sha256()
+              with open(entry['file'], 'wb') as out:
+                  for part in entry['parts']:
+                      chunk = Path(part).read_bytes()
+                      digest.update(chunk)
+                      out.write(chunk)
+              assert digest.hexdigest() == entry['sha256'], 'Game pack checksum mismatch'
+              for part in entry['parts']:
+                  Path(part).unlink()
+          Path('parts.json').unlink()
+          Path('README.md').unlink()
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploy
+        uses: actions/deploy-pages@v4
